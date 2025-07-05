@@ -399,7 +399,9 @@
 				DEVELOPMENT_ASSET_PATHS = "\"Cleaner/Preview Content\"";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSDesktopFolderUsageDescription = "This app needs access to files you select to clean merge conflicts";
+				INFOPLIST_KEY_NSDocumentsFolderUsageDescription = "This app needs access to files you select to clean merge conflicts";
+				INFOPLIST_KEY_NSDownloadsFolderUsageDescription = "This app needs access to files you select to clean merge conflicts";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -424,7 +426,9 @@
 				DEVELOPMENT_ASSET_PATHS = "\"Cleaner/Preview Content\"";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSDesktopFolderUsageDescription = "This app needs access to files you select to clean merge conflicts";
+				INFOPLIST_KEY_NSDocumentsFolderUsageDescription = "This app needs access to files you select to clean merge conflicts";
+				INFOPLIST_KEY_NSDownloadsFolderUsageDescription = "This app needs access to files you select to clean merge conflicts";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
