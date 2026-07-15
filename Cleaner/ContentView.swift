@@ -7,6 +7,7 @@
 
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 struct ContentView: View {
     @State private var inputText = ""
@@ -78,7 +79,7 @@ struct ContentView: View {
                         VStack(spacing: 8) {
                             Image(systemName: "arrow.down.doc.fill")
                                 .font(.largeTitle)
-                            Text("Drop file to load")
+                            Text("Drop Swift file to load")
                                 .font(.headline)
                         }
                         .foregroundStyle(.tint)
@@ -87,7 +88,7 @@ struct ContentView: View {
                         VStack(spacing: 6) {
                             Image(systemName: "doc.badge.plus")
                                 .font(.title2)
-                            Text("Drop a text file here")
+                            Text("Drop a Swift file here")
                                 .font(.callout)
                         }
                         .foregroundStyle(.secondary)
@@ -107,8 +108,10 @@ struct ContentView: View {
                 .frame(minHeight: 150)
                 .padding(.horizontal)
                 .dropDestination(for: URL.self) { urls, _ in
-                    guard let url = urls.first, !url.hasDirectoryPath else {
-                        errorMessage = "Drop a file, not a folder."
+                    guard let url = urls.first,
+                          !url.hasDirectoryPath,
+                          url.pathExtension.lowercased() == "swift" else {
+                        errorMessage = "Drop a Swift source file with the .swift extension."
                         return false
                     }
 
@@ -269,11 +272,12 @@ struct ContentView: View {
     @MainActor
     private func chooseFile() {
         let panel = NSOpenPanel()
-        panel.title = "Choose a file with merge conflicts"
+        panel.title = "Choose a Swift file with merge conflicts"
         panel.prompt = "Choose"
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [.swiftSource]
 
         guard panel.runModal() == .OK, let url = panel.url else {
             return
