@@ -19,7 +19,6 @@ struct ContentView: View {
     @State private var successMessage: String?
     @State private var selectedFileURL: URL?
     @State private var showingOverwriteConfirmation = false
-    @State private var isDropTargeted = false
     @State private var securityScopedURL: URL?
 
     private let cleaner = MergeConflictCleaner()
@@ -70,45 +69,11 @@ struct ContentView: View {
                     .padding(.horizontal)
                 }
 
-                ZStack {
-                    DropThroughTextEditor(text: $inputText)
-                        .opacity(isDropTargeted ? 0.35 : 1)
-
-                    if isDropTargeted {
-                        VStack(spacing: 8) {
-                            Image(systemName: "arrow.down.doc.fill")
-                                .font(.largeTitle)
-                            Text("Drop Swift file to load")
-                                .font(.headline)
-                        }
-                        .foregroundStyle(.tint)
-                        .allowsHitTesting(false)
-                    } else if inputText.isEmpty {
-                        VStack(spacing: 6) {
-                            Image(systemName: "doc.badge.plus")
-                                .font(.title2)
-                            Text("Drop a Swift file here")
-                                .font(.callout)
-                        }
-                        .foregroundStyle(.secondary)
-                        .allowsHitTesting(false)
-                    }
-                }
-                .overlay {
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(
-                            isDropTargeted ? Color.accentColor : Color.gray,
-                            style: StrokeStyle(
-                                lineWidth: isDropTargeted ? 2 : 1,
-                                dash: isDropTargeted ? [7] : []
-                            )
-                        )
-                }
+                TextEditor(text: $inputText)
+                    .font(.system(.body, design: .monospaced))
+                    .border(Color.gray, width: 1)
                 .frame(minHeight: 150)
                 .padding(.horizontal)
-                .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
-                    handleDrop(providers: providers)
-                }
             }
 
             VStack(alignment: .leading, spacing: 10) {
@@ -275,36 +240,6 @@ struct ContentView: View {
         loadFile(from: url)
     }
 
-    private func handleDrop(providers: [NSItemProvider]) -> Bool {
-        guard let provider = providers.first(where: {
-            $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier)
-        }) else {
-            return false
-        }
-
-        provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
-            let url: URL?
-            if let data = item as? Data {
-                url = URL(dataRepresentation: data, relativeTo: nil)
-            } else if let itemURL = item as? URL {
-                url = itemURL
-            } else {
-                url = nil
-            }
-
-            DispatchQueue.main.async {
-                guard let url, !url.hasDirectoryPath,
-                      url.pathExtension.lowercased() == "swift" else {
-                    errorMessage = "Drop a Swift source file with the .swift extension."
-                    return
-                }
-                loadFile(from: url)
-            }
-        }
-
-        return true
-    }
-
     @MainActor
     private func loadFile(from url: URL) {
         stopAccessingSelectedFile()
@@ -337,55 +272,6 @@ struct ContentView: View {
     private func stopAccessingSelectedFile() {
         securityScopedURL?.stopAccessingSecurityScopedResource()
         securityScopedURL = nil
-    }
-}
-
-/// A plain-text editor that opts out of AppKit drag handling so file drops
-/// reach the surrounding SwiftUI `onDrop` modifier. A regular `TextEditor`'s
-/// underlying `NSTextView` intercepts file drags and inserts the path as text.
-private struct DropThroughTextEditor: NSViewRepresentable {
-    @Binding var text: String
-
-    func makeNSView(context: Context) -> NSScrollView {
-        let scrollView = NSTextView.scrollableTextView()
-        let textView = scrollView.documentView as! NSTextView
-
-        textView.delegate = context.coordinator
-        textView.isRichText = false
-        textView.allowsUndo = true
-        textView.font = .monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
-        textView.autoresizingMask = [.width]
-        textView.textContainerInset = NSSize(width: 4, height: 6)
-        textView.unregisterDraggedTypes()
-
-        scrollView.hasVerticalScroller = true
-        scrollView.drawsBackground = true
-
-        return scrollView
-    }
-
-    func updateNSView(_ scrollView: NSScrollView, context: Context) {
-        guard let textView = scrollView.documentView as? NSTextView else { return }
-        if textView.string != text {
-            textView.string = text
-        }
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(text: $text)
-    }
-
-    final class Coordinator: NSObject, NSTextViewDelegate {
-        private let text: Binding<String>
-
-        init(text: Binding<String>) {
-            self.text = text
-        }
-
-        func textDidChange(_ notification: Notification) {
-            guard let textView = notification.object as? NSTextView else { return }
-            text.wrappedValue = textView.string
-        }
     }
 }
 
