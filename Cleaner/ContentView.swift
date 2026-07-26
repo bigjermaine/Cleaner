@@ -177,9 +177,19 @@ struct ContentView: View {
 
             codePanel(isHighlighted: isDropTargeted) {
                 ZStack {
-                    DropThroughTextEditor(text: $inputText)
-                        .padding(10)
-                        .frame(minHeight: 200)
+                    DropThroughTextEditor(
+                        text: $inputText,
+                        isDropTargeted: $isDropTargeted,
+                        onDropFile: { url in
+                            guard !url.hasDirectoryPath,
+                                  url.pathExtension.lowercased() == "swift" else {
+                                errorMessage = "Drop a Swift source file with the .swift extension."
+                                return
+                            }
+                            loadFile(from: url)
+                        }
+                    )
+                    .frame(minHeight: 200)
 
                     if isDropTargeted {
                         VStack(spacing: 6) {
@@ -197,9 +207,6 @@ struct ContentView: View {
                             .allowsHitTesting(false)
                     }
                 }
-            }
-            .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
-                handleDrop(providers: providers)
             }
 
             if selectedResolution == .smart, let message = cleaner.smartAvailabilityMessage {
@@ -323,41 +330,6 @@ struct ContentView: View {
         loadFile(from: url)
     }
 
-    private func handleDrop(providers: [NSItemProvider]) -> Bool {
-        let identifier = UTType.fileURL.identifier
-
-        guard let provider = providers.first(where: {
-            $0.hasItemConformingToTypeIdentifier(identifier)
-        }) else {
-            return false
-        }
-
-        provider.loadItem(forTypeIdentifier: identifier, options: nil) { item, _ in
-            let droppedURL: URL?
-            switch item {
-            case let data as Data:
-                droppedURL = URL(dataRepresentation: data, relativeTo: nil)
-            case let url as URL:
-                droppedURL = url
-            default:
-                droppedURL = nil
-            }
-
-            Task { @MainActor in
-                guard let droppedURL,
-                      !droppedURL.hasDirectoryPath,
-                      droppedURL.pathExtension.lowercased() == "swift" else {
-                    errorMessage = "Drop a Swift source file with the .swift extension."
-                    return
-                }
-
-                loadFile(from: droppedURL)
-            }
-        }
-
-        return true
-    }
-
     @MainActor
     private func loadFile(from url: URL) {
         stopAccessingSelectedFile()
@@ -396,54 +368,164 @@ struct ContentView: View {
     }
 }
 
-/// A plain-text editor that opts out of AppKit drag handling so file drops
-/// reach the surrounding SwiftUI `onDrop` modifier. A stock `TextEditor`'s
-/// underlying `NSTextView` intercepts file drags and inserts the path as text.
+/// Text editor that accepts Finder file drops over its full bounds.
+/// SwiftUI `onDrop` only receives hits on padding around an `NSViewRepresentable`,
+/// so file loading is handled here in AppKit instead.
 private struct DropThroughTextEditor: NSViewRepresentable {
     @Binding var text: String
+    @Binding var isDropTargeted: Bool
+    var onDropFile: (URL) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(text: $text, isDropTargeted: $isDropTargeted, onDropFile: onDropFile)
+    }
 
     func makeNSView(context: Context) -> NSScrollView {
-        let scrollView = NSTextView.scrollableTextView()
-        guard let textView = scrollView.documentView as? NSTextView else {
-            return scrollView
-        }
+        let scrollView = NSScrollView()
+        scrollView.hasVerticalScroller = true
+        scrollView.drawsBackground = false
+        scrollView.borderType = .noBorder
+        scrollView.autohidesScrollers = true
 
+        let textView = FileDropTextView(frame: .zero)
         textView.delegate = context.coordinator
         textView.isRichText = false
         textView.allowsUndo = true
-        textView.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
+        textView.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
         textView.drawsBackground = false
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
         textView.autoresizingMask = [.width]
-        textView.unregisterDraggedTypes()
+        textView.textContainerInset = NSSize(width: 10, height: 10)
+        textView.minSize = NSSize(width: 0, height: 0)
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude,
+                                  height: CGFloat.greatestFiniteMagnitude)
+        textView.textContainer?.containerSize = NSSize(
+            width: scrollView.contentSize.width,
+            height: CGFloat.greatestFiniteMagnitude
+        )
+        textView.textContainer?.widthTracksTextView = true
+        textView.onDropTargeted = { targeted in
+            DispatchQueue.main.async {
+                context.coordinator.isDropTargeted.wrappedValue = targeted
+            }
+        }
+        textView.onDropFile = { url in
+            DispatchQueue.main.async {
+                context.coordinator.onDropFile(url)
+            }
+        }
 
-        scrollView.drawsBackground = false
-        scrollView.hasVerticalScroller = true
-
+        scrollView.documentView = textView
         return scrollView
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
-        guard let textView = scrollView.documentView as? NSTextView else { return }
+        context.coordinator.text = $text
+        context.coordinator.isDropTargeted = $isDropTargeted
+        context.coordinator.onDropFile = onDropFile
+
+        guard let textView = scrollView.documentView as? FileDropTextView else { return }
+        textView.onDropFile = { url in
+            DispatchQueue.main.async {
+                context.coordinator.onDropFile(url)
+            }
+        }
+        textView.onDropTargeted = { targeted in
+            DispatchQueue.main.async {
+                context.coordinator.isDropTargeted.wrappedValue = targeted
+            }
+        }
         if textView.string != text {
             textView.string = text
         }
     }
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator(text: $text)
-    }
-
     final class Coordinator: NSObject, NSTextViewDelegate {
-        private let text: Binding<String>
+        var text: Binding<String>
+        var isDropTargeted: Binding<Bool>
+        var onDropFile: (URL) -> Void
 
-        init(text: Binding<String>) {
+        init(text: Binding<String>,
+             isDropTargeted: Binding<Bool>,
+             onDropFile: @escaping (URL) -> Void) {
             self.text = text
+            self.isDropTargeted = isDropTargeted
+            self.onDropFile = onDropFile
         }
 
         func textDidChange(_ notification: Notification) {
             guard let textView = notification.object as? NSTextView else { return }
             text.wrappedValue = textView.string
         }
+    }
+}
+
+private final class FileDropTextView: NSTextView {
+    var onDropFile: ((URL) -> Void)?
+    var onDropTargeted: ((Bool) -> Void)?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        registerForDraggedTypes([.fileURL])
+    }
+
+    override init(frame frameRect: NSRect, textContainer container: NSTextContainer?) {
+        super.init(frame: frameRect, textContainer: container)
+        registerForDraggedTypes([.fileURL])
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        registerForDraggedTypes([.fileURL])
+    }
+
+    private func fileURL(from info: NSDraggingInfo) -> URL? {
+        let pasteboard = info.draggingPasteboard
+        guard let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [
+            .urlReadingFileURLsOnly: true
+        ]) as? [URL] else {
+            return nil
+        }
+        return urls.first
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        guard fileURL(from: sender) != nil else {
+            return super.draggingEntered(sender)
+        }
+        onDropTargeted?(true)
+        return .copy
+    }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        guard fileURL(from: sender) != nil else {
+            return super.draggingUpdated(sender)
+        }
+        return .copy
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        onDropTargeted?(false)
+        super.draggingExited(sender)
+    }
+
+    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        fileURL(from: sender) != nil || super.prepareForDragOperation(sender)
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        onDropTargeted?(false)
+        if let url = fileURL(from: sender) {
+            onDropFile?(url)
+            return true
+        }
+        return super.performDragOperation(sender)
+    }
+
+    override func concludeDragOperation(_ sender: NSDraggingInfo?) {
+        onDropTargeted?(false)
+        super.concludeDragOperation(sender)
     }
 }
 
