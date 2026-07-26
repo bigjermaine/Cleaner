@@ -20,6 +20,7 @@ struct ContentView: View {
     @State private var selectedFileURL: URL?
     @State private var showingOverwriteConfirmation = false
     @State private var securityScopedURL: URL?
+    @State private var isDropTargeted = false
 
     private let cleaner = MergeConflictCleaner()
 
@@ -174,12 +175,31 @@ struct ContentView: View {
                 .font(.system(size: 11, design: .monospaced))
             }
 
-            codePanel {
-                TextEditor(text: $inputText)
-                    .font(.system(size: 12, design: .monospaced))
-                    .scrollContentBackground(.hidden)
-                    .padding(10)
-                    .frame(minHeight: 200)
+            codePanel(isHighlighted: isDropTargeted) {
+                ZStack {
+                    DropThroughTextEditor(text: $inputText)
+                        .padding(10)
+                        .frame(minHeight: 200)
+
+                    if isDropTargeted {
+                        VStack(spacing: 6) {
+                            Image(systemName: "arrow.down.doc.fill")
+                                .font(.title)
+                            Text("Drop Swift file")
+                                .font(.system(size: 12, weight: .semibold))
+                        }
+                        .foregroundStyle(.tint)
+                        .allowsHitTesting(false)
+                    } else if inputText.isEmpty {
+                        Text("Paste conflicted code, or drop a .swift file here")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.tertiary)
+                            .allowsHitTesting(false)
+                    }
+                }
+            }
+            .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
+                handleDrop(providers: providers)
             }
 
             if selectedResolution == .smart, let message = cleaner.smartAvailabilityMessage {
@@ -228,13 +248,20 @@ struct ContentView: View {
 
     // MARK: - Building blocks
 
-    private func codePanel<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+    private func codePanel<Content: View>(
+        isHighlighted: Bool = false,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
         content()
             .background(Color(nsColor: .textBackgroundColor).opacity(0.92))
             .clipShape(RoundedRectangle(cornerRadius: 10))
             .overlay(
                 RoundedRectangle(cornerRadius: 10)
-                    .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+                    .strokeBorder(
+                        isHighlighted ? Color.accentColor : Color.primary.opacity(0.08),
+                        style: StrokeStyle(lineWidth: isHighlighted ? 2 : 1,
+                                           dash: isHighlighted ? [6] : [])
+                    )
             )
             .shadow(color: .black.opacity(0.14), radius: 10, y: 3)
     }
@@ -296,6 +323,41 @@ struct ContentView: View {
         loadFile(from: url)
     }
 
+    private func handleDrop(providers: [NSItemProvider]) -> Bool {
+        let identifier = UTType.fileURL.identifier
+
+        guard let provider = providers.first(where: {
+            $0.hasItemConformingToTypeIdentifier(identifier)
+        }) else {
+            return false
+        }
+
+        provider.loadItem(forTypeIdentifier: identifier, options: nil) { item, _ in
+            let droppedURL: URL?
+            switch item {
+            case let data as Data:
+                droppedURL = URL(dataRepresentation: data, relativeTo: nil)
+            case let url as URL:
+                droppedURL = url
+            default:
+                droppedURL = nil
+            }
+
+            Task { @MainActor in
+                guard let droppedURL,
+                      !droppedURL.hasDirectoryPath,
+                      droppedURL.pathExtension.lowercased() == "swift" else {
+                    errorMessage = "Drop a Swift source file with the .swift extension."
+                    return
+                }
+
+                loadFile(from: droppedURL)
+            }
+        }
+
+        return true
+    }
+
     @MainActor
     private func loadFile(from url: URL) {
         stopAccessingSelectedFile()
@@ -321,13 +383,67 @@ struct ContentView: View {
     private func clearSelectedFile() {
         stopAccessingSelectedFile()
         selectedFileURL = nil
+        inputText = ""
+        cleanedContent = ""
         successMessage = nil
+        errorMessage = nil
     }
 
     @MainActor
     private func stopAccessingSelectedFile() {
         securityScopedURL?.stopAccessingSecurityScopedResource()
         securityScopedURL = nil
+    }
+}
+
+/// A plain-text editor that opts out of AppKit drag handling so file drops
+/// reach the surrounding SwiftUI `onDrop` modifier. A stock `TextEditor`'s
+/// underlying `NSTextView` intercepts file drags and inserts the path as text.
+private struct DropThroughTextEditor: NSViewRepresentable {
+    @Binding var text: String
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSTextView.scrollableTextView()
+        guard let textView = scrollView.documentView as? NSTextView else {
+            return scrollView
+        }
+
+        textView.delegate = context.coordinator
+        textView.isRichText = false
+        textView.allowsUndo = true
+        textView.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
+        textView.drawsBackground = false
+        textView.autoresizingMask = [.width]
+        textView.unregisterDraggedTypes()
+
+        scrollView.drawsBackground = false
+        scrollView.hasVerticalScroller = true
+
+        return scrollView
+    }
+
+    func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        guard let textView = scrollView.documentView as? NSTextView else { return }
+        if textView.string != text {
+            textView.string = text
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(text: $text)
+    }
+
+    final class Coordinator: NSObject, NSTextViewDelegate {
+        private let text: Binding<String>
+
+        init(text: Binding<String>) {
+            self.text = text
+        }
+
+        func textDidChange(_ notification: Notification) {
+            guard let textView = notification.object as? NSTextView else { return }
+            text.wrappedValue = textView.string
+        }
     }
 }
 
