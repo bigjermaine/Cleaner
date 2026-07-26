@@ -24,39 +24,35 @@ struct ContentView: View {
     private let cleaner = MergeConflictCleaner()
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                header
-                inputCard
-                strategyCard
-                cleanButton
+        VStack(spacing: 0) {
+            toolbar
 
-                if let errorMessage {
-                    banner(message: errorMessage, icon: "exclamationmark.triangle.fill", color: .red)
-                }
+            Divider()
 
-                if let successMessage {
-                    banner(message: successMessage, icon: "checkmark.seal.fill", color: .green)
-                }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    sourcePane
 
-                if !cleanedContent.isEmpty {
-                    resultCard
+                    if let errorMessage {
+                        statusRow(message: errorMessage,
+                                  icon: "exclamationmark.triangle.fill",
+                                  color: .red)
+                    }
+
+                    if let successMessage {
+                        statusRow(message: successMessage,
+                                  icon: "checkmark.circle.fill",
+                                  color: .green)
+                    }
+
+                    if !cleanedContent.isEmpty {
+                        outputPane
+                    }
                 }
+                .padding(20)
             }
-            .padding(24)
         }
-        .background(
-            LinearGradient(
-                colors: [
-                    Color.blue.opacity(0.12),
-                    Color.purple.opacity(0.10),
-                    Color.pink.opacity(0.08)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
-        )
+        .background(Color(nsColor: .windowBackgroundColor))
         .frame(minWidth: 620, minHeight: 560)
         .alert("Copied!", isPresented: $showingCopyAlert) {
             Button("OK", role: .cancel) { }
@@ -80,57 +76,76 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - Sections
+    // MARK: - Toolbar
 
-    private var header: some View {
-        VStack(spacing: 6) {
-            HStack(spacing: 12) {
-                Image(systemName: "wand.and.stars")
-                    .font(.system(size: 34, weight: .semibold))
-                    .foregroundStyle(
-                        LinearGradient(colors: [.blue, .purple],
-                                       startPoint: .top, endPoint: .bottom)
-                    )
+    private var toolbar: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "swift")
+                .foregroundStyle(.orange)
+            Text("Merge Conflict Cleaner")
+                .font(.system(size: 15, weight: .semibold))
 
-                Text("Merge Conflict Cleaner")
-                    .font(.system(size: 34, weight: .bold, design: .rounded))
-                    .foregroundStyle(
-                        LinearGradient(colors: [.blue, .purple, .pink],
-                                       startPoint: .leading, endPoint: .trailing)
-                    )
+            Spacer()
+
+            Picker("", selection: $selectedResolution) {
+                ForEach(MergeConflictCleaner.ConflictResolution.allCases) { strategy in
+                    Text(strategy.title).tag(strategy)
+                }
             }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(width: 300)
+            .disabled(isCleaning)
 
-            Text("Resolve Git conflict markers in seconds")
-                .font(.callout)
-                .foregroundStyle(.secondary)
+            Button {
+                if selectedFileURL == nil {
+                    Task { await cleanConflicts(overwriteFile: false) }
+                } else {
+                    showingOverwriteConfirmation = true
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    if isCleaning {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Image(systemName: "play.fill")
+                    }
+                    Text(isCleaning ? "Cleaning" : "Clean")
+                }
+                .frame(minWidth: 72)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(inputText.isEmpty || isCleaning || smartUnavailable)
         }
-        .padding(.top, 4)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(Color(nsColor: .controlBackgroundColor))
     }
 
-    private var inputCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
+    // MARK: - Source
+
+    private var sourcePane: some View {
+        VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Label(selectedFileURL == nil ? "Paste conflicted text" : "Selected file",
-                      systemImage: selectedFileURL == nil ? "doc.on.clipboard" : "doc.text")
-                    .font(.headline)
-                    .foregroundStyle(.blue)
+                Text(selectedFileURL == nil ? "Source" : "Source · file")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .textCase(.uppercase)
 
                 Spacer()
 
-                Button {
+                Button("Choose File…") {
                     chooseFile()
-                } label: {
-                    Label("Choose File…", systemImage: "folder.fill")
                 }
-                .buttonStyle(.bordered)
-                .tint(.blue)
+                .buttonStyle(.link)
                 .disabled(isCleaning)
             }
 
             if let selectedFileURL {
-                HStack {
-                    Image(systemName: "swift")
-                        .foregroundStyle(.orange)
+                HStack(spacing: 6) {
+                    Image(systemName: "doc.text.fill")
+                        .foregroundStyle(.secondary)
                     Text(selectedFileURL.path)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -147,146 +162,34 @@ struct ContentView: View {
                     .buttonStyle(.plain)
                     .help("Use pasted text instead")
                 }
-                .font(.caption)
-                .padding(8)
-                .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+                .font(.system(size: 11, design: .monospaced))
             }
 
-            TextEditor(text: $inputText)
-                .font(.system(.body, design: .monospaced))
-                .scrollContentBackground(.hidden)
-                .padding(8)
-                .frame(minHeight: 150)
-                .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(
-                            LinearGradient(colors: [.blue.opacity(0.5), .purple.opacity(0.5)],
-                                           startPoint: .topLeading, endPoint: .bottomTrailing),
-                            lineWidth: 1.5
-                        )
-                )
-        }
-        .padding(16)
-        .background(.background.opacity(0.7), in: RoundedRectangle(cornerRadius: 16))
-        .shadow(color: .blue.opacity(0.08), radius: 8, y: 4)
-    }
-
-    private var strategyCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label("Resolution Strategy", systemImage: "arrow.triangle.branch")
-                .font(.headline)
-                .foregroundStyle(.purple)
-
-            HStack(spacing: 10) {
-                ForEach(MergeConflictCleaner.ConflictResolution.allCases) { strategy in
-                    strategyButton(strategy)
-                }
+            codePanel {
+                TextEditor(text: $inputText)
+                    .font(.system(size: 12, design: .monospaced))
+                    .scrollContentBackground(.hidden)
+                    .padding(10)
+                    .frame(minHeight: 200)
             }
 
-            if selectedResolution == .smart {
-                Label(
-                    cleaner.smartAvailabilityMessage
-                        ?? "Uses on-device Apple Intelligence to choose the best resolution.",
-                    systemImage: cleaner.isSmartAvailable ? "sparkles" : "exclamationmark.circle"
-                )
-                .font(.caption)
-                .foregroundStyle(cleaner.isSmartAvailable ? Color.secondary : Color.orange)
+            if selectedResolution == .smart, let message = cleaner.smartAvailabilityMessage {
+                statusRow(message: message,
+                          icon: "sparkles",
+                          color: .orange)
             }
         }
-        .padding(16)
-        .background(.background.opacity(0.7), in: RoundedRectangle(cornerRadius: 16))
-        .shadow(color: .purple.opacity(0.08), radius: 8, y: 4)
     }
 
-    private func strategyButton(_ strategy: MergeConflictCleaner.ConflictResolution) -> some View {
-        let isSelected = selectedResolution == strategy
+    // MARK: - Output
 
-        return Button {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                selectedResolution = strategy
-            }
-        } label: {
-            VStack(spacing: 6) {
-                Image(systemName: strategy.iconName)
-                    .font(.title3)
-                Text(strategy.title)
-                    .font(.subheadline.weight(.semibold))
-                Text(strategy.subtitle)
-                    .font(.caption2)
-                    .opacity(0.8)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 10)
-            .foregroundStyle(isSelected ? Color.white : strategy.accentColor)
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(isSelected
-                          ? AnyShapeStyle(strategy.accentColor.gradient)
-                          : AnyShapeStyle(strategy.accentColor.opacity(0.12)))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(strategy.accentColor.opacity(isSelected ? 0 : 0.35), lineWidth: 1)
-            )
-        }
-        .buttonStyle(.plain)
-        .disabled(isCleaning)
-    }
-
-    private var cleanButton: some View {
-        Button {
-            if selectedFileURL == nil {
-                Task { await cleanConflicts(overwriteFile: false) }
-            } else {
-                showingOverwriteConfirmation = true
-            }
-        } label: {
-            HStack(spacing: 10) {
-                if isCleaning {
-                    ProgressView()
-                        .controlSize(.small)
-                } else {
-                    Image(systemName: "sparkles")
-                }
-                Text(isCleaning
-                     ? "Cleaning…"
-                     : selectedFileURL == nil
-                        ? "Clean Merge Conflicts"
-                        : "Clean Selected File")
-                    .font(.headline)
-            }
-            .foregroundStyle(.white)
-            .frame(minWidth: 240)
-            .padding(.vertical, 14)
-            .background(
-                Capsule().fill(
-                    LinearGradient(colors: [.blue, .purple],
-                                   startPoint: .leading, endPoint: .trailing)
-                )
-            )
-            .shadow(color: .purple.opacity(0.35), radius: 10, y: 5)
-        }
-        .buttonStyle(.plain)
-        .disabled(inputText.isEmpty || isCleaning || smartUnavailable)
-        .opacity(inputText.isEmpty || smartUnavailable ? 0.5 : 1)
-    }
-
-    private func banner(message: String, icon: String, color: Color) -> some View {
-        Label(message, systemImage: icon)
-            .font(.callout)
-            .foregroundStyle(color)
-            .padding(12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
-    }
-
-    private var resultCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
+    private var outputPane: some View {
+        VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Label("Cleaned Content", systemImage: "checkmark.circle.fill")
-                    .font(.headline)
-                    .foregroundStyle(.green)
+                Text("Result")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .textCase(.uppercase)
 
                 Spacer()
 
@@ -295,29 +198,45 @@ struct ContentView: View {
                     NSPasteboard.general.setString(cleanedContent, forType: .string)
                     showingCopyAlert = true
                 } label: {
-                    Label("Copy", systemImage: "doc.on.doc.fill")
+                    Label("Copy", systemImage: "doc.on.doc")
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.green)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
             }
 
-            ScrollView {
-                Text(cleanedContent)
-                    .font(.system(.body, design: .monospaced))
-                    .textSelection(.enabled)
-                    .padding()
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            codePanel {
+                ScrollView {
+                    Text(cleanedContent)
+                        .font(.system(size: 12, design: .monospaced))
+                        .textSelection(.enabled)
+                        .padding(10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxHeight: 300)
             }
-            .frame(maxHeight: 300)
-            .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
-            .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(Color.green.opacity(0.4), lineWidth: 1.5)
-            )
         }
-        .padding(16)
-        .background(.background.opacity(0.7), in: RoundedRectangle(cornerRadius: 16))
-        .shadow(color: .green.opacity(0.1), radius: 8, y: 4)
+    }
+
+    // MARK: - Building blocks
+
+    private func codePanel<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        content()
+            .background(Color(nsColor: .textBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+            )
+    }
+
+    private func statusRow(message: String, icon: String, color: Color) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+            Text(message)
+        }
+        .font(.system(size: 11))
+        .foregroundStyle(color)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var smartUnavailable: Bool {
@@ -399,35 +318,6 @@ struct ContentView: View {
     private func stopAccessingSelectedFile() {
         securityScopedURL?.stopAccessingSecurityScopedResource()
         securityScopedURL = nil
-    }
-}
-
-private extension MergeConflictCleaner.ConflictResolution {
-    var iconName: String {
-        switch self {
-        case .head: return "arrow.up.doc.fill"
-        case .incoming: return "arrow.down.doc.fill"
-        case .removeAll: return "trash.fill"
-        case .smart: return "sparkles"
-        }
-    }
-
-    var subtitle: String {
-        switch self {
-        case .head: return "Keep first side"
-        case .incoming: return "Keep second side"
-        case .removeAll: return "Drop both sides"
-        case .smart: return "Apple Intelligence"
-        }
-    }
-
-    var accentColor: Color {
-        switch self {
-        case .head: return .blue
-        case .incoming: return .teal
-        case .removeAll: return .red
-        case .smart: return .purple
-        }
     }
 }
 
