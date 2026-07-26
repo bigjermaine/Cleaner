@@ -53,10 +53,13 @@ struct ContentView: View {
                 .padding(20)
             }
         }
-        .background(
-            VisualEffectBackground(material: .underWindowBackground)
-                .ignoresSafeArea()
-        )
+        .background {
+            ZStack {
+                VisualEffectBackground(material: .underWindowBackground)
+                MergeBackdrop()
+            }
+            .ignoresSafeArea()
+        }
         .frame(minWidth: 660, minHeight: 580)
         .alert("Copied!", isPresented: $showingCopyAlert) {
             Button("OK", role: .cancel) { }
@@ -325,6 +328,88 @@ struct ContentView: View {
     private func stopAccessingSelectedFile() {
         securityScopedURL?.stopAccessingSecurityScopedResource()
         securityScopedURL = nil
+    }
+}
+
+/// Decorative backdrop that illustrates what the app does: two conflicting
+/// branches converging into a single resolved trunk, annotated with the Git
+/// conflict markers the cleaner removes.
+private struct MergeBackdrop: View {
+    private let headColor = Color.blue
+    private let incomingColor = Color.orange
+    private let resolvedColor = Color.green
+
+    var body: some View {
+        GeometryReader { proxy in
+            let width = proxy.size.width
+            let height = proxy.size.height
+            let mergeX = width * 0.5
+            let mergeY = height * 0.52
+            let trunkEndY = height * 0.94
+
+            ZStack {
+                branch(
+                    from: CGPoint(x: width * 0.16, y: height * 0.08),
+                    to: CGPoint(x: mergeX, y: mergeY),
+                    color: headColor
+                )
+
+                branch(
+                    from: CGPoint(x: width * 0.84, y: height * 0.08),
+                    to: CGPoint(x: mergeX, y: mergeY),
+                    color: incomingColor
+                )
+
+                Path { path in
+                    path.move(to: CGPoint(x: mergeX, y: mergeY))
+                    path.addLine(to: CGPoint(x: mergeX, y: trunkEndY))
+                }
+                .stroke(resolvedColor.opacity(0.22), style: StrokeStyle(lineWidth: 5, lineCap: .round))
+
+                commitDot(at: CGPoint(x: width * 0.16, y: height * 0.08), color: headColor)
+                commitDot(at: CGPoint(x: width * 0.84, y: height * 0.08), color: incomingColor)
+                commitDot(at: CGPoint(x: mergeX, y: mergeY), color: resolvedColor, radius: 9)
+                commitDot(at: CGPoint(x: mergeX, y: trunkEndY), color: resolvedColor)
+
+                marker("<<<<<<< HEAD", color: headColor)
+                    .position(x: width * 0.16, y: height * 0.08 - 20)
+
+                marker(">>>>>>> incoming", color: incomingColor)
+                    .position(x: width * 0.84, y: height * 0.08 - 20)
+
+                marker("=======", color: .secondary)
+                    .position(x: mergeX, y: mergeY - 22)
+
+                marker("resolved", color: resolvedColor)
+                    .position(x: mergeX, y: trunkEndY + 18)
+            }
+        }
+        .allowsHitTesting(false)
+    }
+
+    private func branch(from start: CGPoint, to end: CGPoint, color: Color) -> some View {
+        Path { path in
+            path.move(to: start)
+            path.addCurve(
+                to: end,
+                control1: CGPoint(x: start.x, y: (start.y + end.y) / 2),
+                control2: CGPoint(x: end.x, y: start.y + (end.y - start.y) * 0.35)
+            )
+        }
+        .stroke(color.opacity(0.22), style: StrokeStyle(lineWidth: 5, lineCap: .round))
+    }
+
+    private func commitDot(at point: CGPoint, color: Color, radius: CGFloat = 7) -> some View {
+        Circle()
+            .fill(color.opacity(0.28))
+            .frame(width: radius * 2, height: radius * 2)
+            .position(point)
+    }
+
+    private func marker(_ text: String, color: Color) -> some View {
+        Text(text)
+            .font(.system(size: 11, weight: .medium, design: .monospaced))
+            .foregroundStyle(color.opacity(0.35))
     }
 }
 
