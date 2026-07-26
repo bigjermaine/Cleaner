@@ -1,5 +1,8 @@
 # Cleaner
 
+[![Downloads](https://img.shields.io/github/downloads/bigjermaine/Cleaner/total?label=downloads)](https://github.com/bigjermaine/Cleaner/releases)
+[![Latest release](https://img.shields.io/github/v/release/bigjermaine/Cleaner)](https://github.com/bigjermaine/Cleaner/releases/latest)
+
 A macOS app that removes Git merge-conflict markers from pasted text. Choose a simple rule-based strategy, or let on-device **Apple Intelligence** pick a smart resolution.
 
 ## Features
@@ -20,11 +23,9 @@ A macOS app that removes Git merge-conflict markers from pasted text. Choose a s
 
 ## Download
 
-Grab the latest build from [Releases](https://github.com/bigjermaine/Cleaner/releases).
+Grab the latest build from [Releases](https://github.com/bigjermaine/Cleaner/releases). The downloads badge at the top updates automatically from Release asset downloads.
 
 > Gatekeeper note: if macOS blocks the app, Right-click the app → **Open**, then confirm.
-
-Download counts appear on each release asset on the Releases page.
 
 ## Build from source
 
