@@ -28,9 +28,10 @@ struct ContentView: View {
             toolbar
 
             Divider()
+                .opacity(0.6)
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 18) {
                     sourcePane
 
                     if let errorMessage {
@@ -52,8 +53,11 @@ struct ContentView: View {
                 .padding(20)
             }
         }
-        .background(Color(nsColor: .windowBackgroundColor))
-        .frame(minWidth: 620, minHeight: 560)
+        .background(
+            VisualEffectBackground(material: .underWindowBackground)
+                .ignoresSafeArea()
+        )
+        .frame(minWidth: 660, minHeight: 580)
         .alert("Copied!", isPresented: $showingCopyAlert) {
             Button("OK", role: .cancel) { }
         } message: {
@@ -119,8 +123,10 @@ struct ContentView: View {
             .disabled(inputText.isEmpty || isCleaning || smartUnavailable)
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(Color(nsColor: .controlBackgroundColor))
+        .padding(.vertical, 12)
+        .background(
+            VisualEffectBackground(material: .headerView)
+        )
     }
 
     // MARK: - Source
@@ -221,12 +227,13 @@ struct ContentView: View {
 
     private func codePanel<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         content()
-            .background(Color(nsColor: .textBackgroundColor))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .background(Color(nsColor: .textBackgroundColor).opacity(0.92))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
             .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 10)
+                    .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
             )
+            .shadow(color: .black.opacity(0.14), radius: 10, y: 3)
     }
 
     private func statusRow(message: String, icon: String, color: Color) -> some View {
@@ -318,6 +325,24 @@ struct ContentView: View {
     private func stopAccessingSelectedFile() {
         securityScopedURL?.stopAccessingSecurityScopedResource()
         securityScopedURL = nil
+    }
+}
+
+/// Bridges `NSVisualEffectView` so the window picks up native macOS vibrancy
+/// instead of a flat fill.
+private struct VisualEffectBackground: NSViewRepresentable {
+    let material: NSVisualEffectView.Material
+
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = material
+        view.blendingMode = .behindWindow
+        view.state = .active
+        return view
+    }
+
+    func updateNSView(_ view: NSVisualEffectView, context: Context) {
+        view.material = material
     }
 }
 
