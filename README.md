@@ -1,8 +1,4 @@
-# Cleaner
-
-[![Downloads](https://img.shields.io/github/downloads/bigjermaine/Cleaner/total?label=downloads)](https://github.com/bigjermaine/Cleaner/releases)
-[![Latest release](https://img.shields.io/github/v/release/bigjermaine/Cleaner)](https://github.com/bigjermaine/Cleaner/releases/latest)
-
+# Clean
 A macOS app that removes Git merge-conflict markers from pasted text. Choose a simple rule-based strategy, or let on-device **Apple Intelligence** pick a smart resolution.
 
 ## Features
